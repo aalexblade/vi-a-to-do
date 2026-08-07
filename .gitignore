@@ -36,22 +36,21 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # Prisma
 /src/generated/prisma
-# Ігноруємо локальні SQLite бази, якщо вони з'являться в папці prisma
 prisma/*.db
 prisma/*.db-journal
 prisma/*.sqlite
 
-# AI Agents & IDE settings (Windsurf, Claude, etc.)
+# AI Agents & IDE settings
 .claude/
 .agents/
 .windsurf/
