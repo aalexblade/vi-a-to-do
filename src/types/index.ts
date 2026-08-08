@@ -1,31 +1,42 @@
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
-export type Priority = "LOW" | "MEDIUM" | "HIGH";
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
-export interface Task {
-  id: string;
+interface BaseTask {
   title: string;
-  description?: string;
+  description: string;
   status: TaskStatus;
-  priority: Priority;
-  dueDate?: Date;
+  priority: TaskPriority;
+}
+
+export interface Task extends BaseTask {
+  id: string;
+  dueDate: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CreateTaskDTO extends BaseTask {
+  dueDate: string; // dueDate will be a string from form input
 }
 
 export interface Note {
   id: string;
   title: string;
-  content?: string;
+  content: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
+export type CreateNoteDTO = Omit<Note, "id" | "createdAt" | "updatedAt">;
+
 export interface CalendarEvent {
   id: string;
   title: string;
-  description?: string;
+  description: string;
   startDate: Date;
   endDate: Date;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type CreateCalendarEventDTO = Omit<CalendarEvent, "id" | "createdAt" | "updatedAt">;
