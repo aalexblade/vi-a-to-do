@@ -1,1 +1,14 @@
-export default function NotesPage() { return ( <div> <h1 className="text-3xl font-bold mb-4">Notes</h1> <p className="text-muted-foreground">Keep your thoughts organized.</p> </div> ); }
+import { getNotes } from "@/features/notes/actions";
+import { CreateNoteForm, NoteGrid } from "@/features/notes/components";
+
+export default async function NotesPage() {
+  const notes = await getNotes();
+
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="mb-6 text-4xl font-bold">My Notes</h1>
+      <CreateNoteForm />
+      <NoteGrid notes={notes} />
+    </div>
+  );
+}
