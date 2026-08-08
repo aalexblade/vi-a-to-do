@@ -1,1 +1,24 @@
-export default function CalendarPage() { return ( <div> <h1 className="text-3xl font-bold mb-4">Calendar</h1> <p className="text-muted-foreground">View and schedule your events.</p> </div> ); }
+import { getCalendarEvents } from "@/features/calendar/actions";
+import { CalendarView } from "@/features/calendar/components";
+
+export default async function CalendarPage() {
+  const events = await getCalendarEvents();
+
+  // Convert Date objects to ISO strings for serialization, then back in client component
+  const serializedEvents = events.map((event) => ({
+    ...event,
+    startDate: event.startDate.toISOString(),
+    endDate: event.endDate.toISOString(),
+  }));
+
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="mb-6 text-4xl font-bold">My Calendar</h1>
+      <CalendarView events={serializedEvents.map(event => ({
+        ...event,
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
+      }))} />
+    </div>
+  );
+}
