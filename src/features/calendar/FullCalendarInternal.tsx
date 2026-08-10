@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { updateCalendarEventDates, createCalendarEvent } from "./actions";
 import { CalendarEvent } from "./types";
 
@@ -11,7 +11,6 @@ interface FullCalendarInternalProps {
 interface EventChangeInfo {
   event: {
     id: string;
-    title: string;
     start: Date | null;
     end: Date | null;
   };
@@ -20,6 +19,13 @@ interface EventChangeInfo {
 interface DateSelectInfo {
   start: Date;
   end: Date;
+  allDay: boolean;
+}
+
+interface CalendarApi {
+  destroy: () => void;
+  removeAllEventSources: () => void;
+  addEventSource: (events: unknown) => void;
 }
 
 export default function FullCalendarInternal({
@@ -28,8 +34,9 @@ export default function FullCalendarInternal({
   const [prevInitialEvents, setPrevInitialEvents] =
     useState<CalendarEvent[]>(initialEvents);
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+
   const calendarRef = useRef<HTMLDivElement>(null);
-  const calendarApiRef = useRef<unknown>(null);
+  const calendarInstanceRef = useRef<CalendarApi | null>(null);
 
   if (prevInitialEvents !== initialEvents) {
     setPrevInitialEvents(initialEvents);
@@ -66,11 +73,30 @@ export default function FullCalendarInternal({
     }
   };
 
+  // Мемоїзація відформатованих подій під формат FullCalendar
+  const formattedEvents = useMemo(() => {
+    return events.map((event) => {
+      const start = new Date(event.startDate);
+      const end = new Date(event.endDate);
+
+      return {
+        id: event.id,
+        title: event.title,
+        start,
+        end,
+        allDay:
+          start.getHours() === 0 &&
+          start.getMinutes() === 0 &&
+          end.getHours() === 0 &&
+          end.getMinutes() === 0 &&
+          start.toDateString() === end.toDateString(),
+      };
+    });
+  }, [events]);
+
+  // 1. Ініціалізація календаря (виконується лише один раз при маунті)
   useEffect(() => {
     if (!calendarRef.current) return;
-
-    let calendarInstance: { destroy: () => void; render: () => void } | null =
-      null;
 
     Promise.all([
       import("@fullcalendar/core"),
@@ -83,16 +109,9 @@ export default function FullCalendarInternal({
       const timeGrid = timeGridMod.default;
       const interaction = interactionMod.default;
 
-      if (!calendarRef.current) return;
+      if (!calendarRef.current || calendarInstanceRef.current) return;
 
-      const formattedEvents = events.map((event) => ({
-        id: event.id,
-        title: event.title,
-        start: event.startDate,
-        end: event.endDate,
-      }));
-
-      calendarInstance = new Calendar(calendarRef.current, {
+      const calendarInstance = new Calendar(calendarRef.current, {
         plugins: [dayGrid, timeGrid, interaction],
         initialView: "dayGridMonth",
         headerToolbar: {
@@ -104,23 +123,39 @@ export default function FullCalendarInternal({
         selectable: true,
         selectMirror: true,
         dayMaxEvents: true,
+
+        slotDuration: "00:30:00",
+        snapDuration: "00:15:00",
+        slotMinTime: "00:00:00",
+        slotMaxTime: "24:00:00",
+        allDaySlot: true,
+
         events: formattedEvents,
         eventDrop: (info: unknown) => handleEventDrop(info as EventChangeInfo),
-        eventResize: (info: unknown) =>
-          handleEventResize(info as EventChangeInfo),
+        eventResize: (info: unknown) => handleEventResize(info as EventChangeInfo),
         select: (info: unknown) => handleDateSelect(info as DateSelectInfo),
       });
 
       calendarInstance.render();
-      calendarApiRef.current = calendarInstance;
+      calendarInstanceRef.current = calendarInstance as unknown as CalendarApi;
     });
 
     return () => {
-      if (calendarInstance) {
-        calendarInstance.destroy();
+      if (calendarInstanceRef.current) {
+        calendarInstanceRef.current.destroy();
+        calendarInstanceRef.current = null;
       }
     };
-  }, [events]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 2. Реактивне оновлення подій БЕЗ перемикання виду календаря
+  useEffect(() => {
+    if (calendarInstanceRef.current) {
+      calendarInstanceRef.current.removeAllEventSources();
+      calendarInstanceRef.current.addEventSource(formattedEvents);
+    }
+  }, [formattedEvents]);
 
   return (
     <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border shadow-sm">
