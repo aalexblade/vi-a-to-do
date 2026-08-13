@@ -1,8 +1,20 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Loader2, X, Trash2, Calendar as CalendarIcon, Clock, Edit2, Save } from "lucide-react";
-import { updateCalendarEventDates, createCalendarEvent, deleteCalendarEvent } from "./actions";
+import {
+  Loader2,
+  X,
+  Trash2,
+  Calendar as CalendarIcon,
+  Clock,
+  Edit2,
+  Save,
+} from "lucide-react";
+import {
+  updateCalendarEventDates,
+  createCalendarEvent,
+  deleteCalendarEvent,
+} from "./actions";
 import { CalendarEvent } from "./types";
 
 interface FullCalendarInternalProps {
@@ -52,14 +64,15 @@ export default function FullCalendarInternal({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Стейт форми створення
   const [titleInput, setTitleInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
   const [startTimeInput, setStartTimeInput] = useState("");
   const [endTimeInput, setEndTimeInput] = useState("");
-  const [selectedDates, setSelectedDates] = useState<{ start: Date; end: Date } | null>(null);
+  const [selectedDates, setSelectedDates] = useState<{
+    start: Date;
+    end: Date;
+  } | null>(null);
 
-  // Стейт обраної події та її редагування
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
     title: string;
@@ -168,23 +181,26 @@ export default function FullCalendarInternal({
     e.preventDefault();
     if (!selectedEvent || !editTitle.trim()) return;
 
-    const baseStart = selectedEvent.start ? new Date(selectedEvent.start) : new Date();
+    const baseStart = selectedEvent.start
+      ? new Date(selectedEvent.start)
+      : new Date();
     if (editStartTime) {
       const [hours, minutes] = editStartTime.split(":").map(Number);
       baseStart.setHours(hours, minutes, 0, 0);
     }
 
-    const baseEnd = selectedEvent.end ? new Date(selectedEvent.end) : new Date(baseStart);
+    const baseEnd = selectedEvent.end
+      ? new Date(selectedEvent.end)
+      : new Date(baseStart);
     if (editEndTime) {
       const [hours, minutes] = editEndTime.split(":").map(Number);
       baseEnd.setHours(hours, minutes, 0, 0);
     }
 
     setIsPending(true);
-    // Викликаємо Server Action
+
     await updateCalendarEventDates(selectedEvent.id, baseStart, baseEnd);
 
-    // Оновлюємо внутрішній стан подій
     setEvents((prev) =>
       prev.map((item) =>
         item.id === selectedEvent.id
@@ -195,8 +211,8 @@ export default function FullCalendarInternal({
               startDate: baseStart,
               endDate: baseEnd,
             }
-          : item
-      )
+          : item,
+      ),
     );
 
     setIsPending(false);
@@ -276,7 +292,8 @@ export default function FullCalendarInternal({
 
         events: formattedEvents,
         eventDrop: (info: unknown) => handleEventDrop(info as EventChangeInfo),
-        eventResize: (info: unknown) => handleEventResize(info as EventChangeInfo),
+        eventResize: (info: unknown) =>
+          handleEventResize(info as EventChangeInfo),
         select: (info: unknown) => handleDateSelect(info as DateSelectInfo),
         eventClick: (info: unknown) => handleEventClick(info as EventClickInfo),
       });
@@ -442,7 +459,9 @@ export default function FullCalendarInternal({
                   disabled={!titleInput.trim() || isPending}
                   className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm transition-all disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-600 disabled:shadow-none disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 active:bg-blue-800 cursor-pointer"
                 >
-                  {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   Створити
                 </button>
               </div>
@@ -463,7 +482,12 @@ export default function FullCalendarInternal({
                 {!isEditing && selectedEvent.start && (
                   <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                     <Clock className="h-3.5 w-3.5 text-blue-500" />
-                    <span>{formatSelectedDateTime(selectedEvent.start, selectedEvent.end)}</span>
+                    <span>
+                      {formatSelectedDateTime(
+                        selectedEvent.start,
+                        selectedEvent.end,
+                      )}
+                    </span>
                   </div>
                 )}
               </div>
@@ -573,7 +597,9 @@ export default function FullCalendarInternal({
                     {selectedEvent.description}
                   </p>
                 ) : (
-                  <p className="mt-4 text-sm text-gray-400 italic">Опис відсутній</p>
+                  <p className="mt-4 text-sm text-gray-400 italic">
+                    Опис відсутній
+                  </p>
                 )}
 
                 <div className="flex justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-800 mt-6">
