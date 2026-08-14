@@ -470,7 +470,7 @@ export default function FullCalendarInternal({
         </div>
       )}
 
-      {/* Модальне вікно перегляду / редагування / видалення події */}
+      
       {isDetailOpen && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
