@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { CalendarEvent } from "./types";
+import { Task } from "@/types";
 
 const FullCalendarInternal = dynamic(
   () => import("./FullCalendarInternal"),
@@ -17,8 +18,9 @@ const FullCalendarInternal = dynamic(
 
 interface CalendarViewProps {
   events: CalendarEvent[];
+  tasks?: Task[];
 }
 
-export function CalendarView({ events }: CalendarViewProps) {
-  return <FullCalendarInternal initialEvents={events} />;
+export function CalendarView({ events, tasks = [] }: CalendarViewProps) {
+  return <FullCalendarInternal initialEvents={events} initialTasks={tasks} />;
 }
