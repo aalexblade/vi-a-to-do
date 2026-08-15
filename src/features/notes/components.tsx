@@ -10,9 +10,12 @@ import {
   Search,
   X,
   FileText,
+  CheckSquare,
 } from "lucide-react";
 import { Note } from "./types";
 import { createNote, updateNote, deleteNote } from "./actions";
+import { createTask } from "@/features/tasks/actions";
+import { TaskPriority } from "@/types";
 
 interface NoteCardProps {
   note: Note;
@@ -20,8 +23,15 @@ interface NoteCardProps {
 
 export function NoteCard({ note }: NoteCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isConvertOpen, setIsConvertOpen] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
+
+  // Convert to Task state
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>("MEDIUM");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskSuccess, setTaskSuccess] = useState(false);
+
   const [isPending, startTransition] = useTransition();
 
   const handleSave = () => {
@@ -46,6 +56,28 @@ export function NoteCard({ note }: NoteCardProps) {
     });
   };
 
+  const handleConvertToTask = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!taskDueDate) return;
+
+    startTransition(async () => {
+      const created = await createTask({
+        title: note.title,
+        description: note.content,
+        priority: taskPriority,
+        dueDate: new Date(taskDueDate),
+      });
+
+      if (created) {
+        setTaskSuccess(true);
+        setTimeout(() => {
+          setTaskSuccess(false);
+          setIsConvertOpen(false);
+        }, 1200);
+      }
+    });
+  };
+
   const formattedDate = new Date(note.createdAt).toLocaleDateString("uk-UA", {
     day: "numeric",
     month: "short",
@@ -53,96 +85,195 @@ export function NoteCard({ note }: NoteCardProps) {
   });
 
   return (
-    <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 p-5 shadow-sm transition-all hover:shadow-md flex flex-col justify-between">
-      {isEditing ? (
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-              Title *
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-base font-semibold text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
-              required
-            />
-          </div>
+    <>
+      <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 p-5 shadow-sm transition-all hover:shadow-md flex flex-col justify-between">
+        {isEditing ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Title *
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-base font-semibold text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
+                required
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-              Content *
-            </label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:border-blue-500 focus:outline-none resize-none"
-              required
-            />
-          </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Content *
+              </label>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:border-blue-500 focus:outline-none resize-none"
+                required
+              />
+            </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <button
-              onClick={() => {
-                setTitle(note.title);
-                setContent(note.content);
-                setIsEditing(false);
-              }}
-              className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!title.trim() || !content.trim() || isPending}
-              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isPending ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              Save
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 wrap-break-word">
-              {note.title}
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed line-clamp-6">
-              {note.content}
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 mt-3 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-400">
-            <span>{formattedDate}</span>
-            <div className="flex items-center space-x-1">
+            <div className="flex justify-end space-x-2 pt-2 border-t border-gray-100 dark:border-gray-800">
               <button
-                onClick={() => setIsEditing(true)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                onClick={() => {
+                  setTitle(note.title);
+                  setContent(note.content);
+                  setIsEditing(false);
+                }}
+                className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
               >
-                <Edit className="h-4 w-4" />
+                Cancel
               </button>
               <button
-                onClick={handleDelete}
-                disabled={isPending}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer disabled:opacity-50"
+                onClick={handleSave}
+                disabled={!title.trim() || !content.trim() || isPending}
+                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="h-4 w-4" />
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
                 )}
+                Save
               </button>
             </div>
           </div>
-        </>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 wrap-break-word">
+                {note.title}
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed line-clamp-6">
+                {note.content}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 mt-3 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-400">
+              <span>{formattedDate}</span>
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => setIsConvertOpen(true)}
+                  title="Створити задачу з нотатки"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
+                >
+                  <CheckSquare className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  title="Редагувати нотатку"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                >
+                  <Edit className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isPending}
+                  title="Видалити"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Convert Note to Task Modal */}
+      {isConvertOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600">
+                  <CheckSquare className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Створити задачу з нотатки
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConvertOpen(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConvertToTask} className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800 space-y-1">
+                <p className="text-xs font-semibold uppercase text-gray-500">
+                  Заголовок задачі
+                </p>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {note.title}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    Пріоритет
+                  </label>
+                  <select
+                    value={taskPriority}
+                    onChange={(e) =>
+                      setTaskPriority(e.target.value as TaskPriority)
+                    }
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none cursor-pointer"
+                  >
+                    <option value="LOW">LOW</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="HIGH">HIGH</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                    Дедлайн *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={taskDueDate}
+                    onChange={(e) => setTaskDueDate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setIsConvertOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
+                >
+                  Скасувати
+                </button>
+                <button
+                  type="submit"
+                  disabled={!taskDueDate || isPending}
+                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 cursor-pointer"
+                >
+                  {isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {taskSuccess ? "Створено! ✓" : "Створити задачу"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -267,7 +398,6 @@ export function NoteGrid({ notes }: NoteGridProps) {
 
   return (
     <div className="space-y-4">
-      {/* Search Input */}
       {notes.length > 0 && (
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
