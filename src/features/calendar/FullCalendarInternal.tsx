@@ -16,9 +16,11 @@ import {
   deleteCalendarEvent,
 } from "./actions";
 import { CalendarEvent } from "./types";
+import { Task } from "@/types";
 
 interface FullCalendarInternalProps {
   initialEvents: CalendarEvent[];
+  initialTasks?: Task[];
 }
 
 interface EventChangeInfo {
@@ -26,6 +28,9 @@ interface EventChangeInfo {
     id: string;
     start: Date | null;
     end: Date | null;
+    extendedProps: {
+      isTask?: boolean;
+    };
   };
 }
 
@@ -43,6 +48,9 @@ interface EventClickInfo {
     end: Date | null;
     extendedProps: {
       description?: string;
+      isTask?: boolean;
+      priority?: string;
+      status?: string;
     };
   };
 }
@@ -55,10 +63,15 @@ interface CalendarApi {
 
 export default function FullCalendarInternal({
   initialEvents,
+  initialTasks = [],
 }: FullCalendarInternalProps) {
   const [prevInitialEvents, setPrevInitialEvents] =
     useState<CalendarEvent[]>(initialEvents);
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+
+  const [prevInitialTasks, setPrevInitialTasks] =
+    useState<Task[]>(initialTasks);
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -79,6 +92,9 @@ export default function FullCalendarInternal({
     description?: string;
     start?: Date | null;
     end?: Date | null;
+    isTask?: boolean;
+    priority?: string;
+    status?: string;
   } | null>(null);
 
   const [editTitle, setEditTitle] = useState("");
@@ -96,6 +112,11 @@ export default function FullCalendarInternal({
     setEvents(initialEvents);
   }
 
+  if (prevInitialTasks !== initialTasks) {
+    setPrevInitialTasks(initialTasks);
+    setTasks(initialTasks);
+  }
+
   const formatTimeForInput = (date: Date) => {
     const hours = date.getHours().toString().padStart(2, "0");
     const minutes = date.getMinutes().toString().padStart(2, "0");
@@ -103,6 +124,7 @@ export default function FullCalendarInternal({
   };
 
   const handleEventDrop = async (info: EventChangeInfo) => {
+    if (info.event.extendedProps.isTask) return;
     const { id, start, end } = info.event;
     if (start) {
       await updateCalendarEventDates(id, start, end || start);
@@ -110,6 +132,7 @@ export default function FullCalendarInternal({
   };
 
   const handleEventResize = async (info: EventChangeInfo) => {
+    if (info.event.extendedProps.isTask) return;
     const { id, start, end } = info.event;
     if (start && end) {
       await updateCalendarEventDates(id, start, end);
@@ -128,6 +151,7 @@ export default function FullCalendarInternal({
   const handleEventClick = (info: EventClickInfo) => {
     const start = info.event.start;
     const end = info.event.end;
+    const isTask = !!info.event.extendedProps.isTask;
 
     setSelectedEvent({
       id: info.event.id,
@@ -135,9 +159,12 @@ export default function FullCalendarInternal({
       description: info.event.extendedProps.description,
       start,
       end,
+      isTask,
+      priority: info.event.extendedProps.priority,
+      status: info.event.extendedProps.status,
     });
 
-    setEditTitle(info.event.title);
+    setEditTitle(info.event.title.replace(/^✓\s|^📋\s/, ""));
     setEditDescription(info.event.extendedProps.description || "");
     setEditStartTime(start ? formatTimeForInput(start) : "");
     setEditEndTime(end ? formatTimeForInput(end) : "");
@@ -179,7 +206,7 @@ export default function FullCalendarInternal({
 
   const handleUpdateSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!selectedEvent || !editTitle.trim()) return;
+    if (!selectedEvent || !editTitle.trim() || selectedEvent.isTask) return;
 
     const baseStart = selectedEvent.start
       ? new Date(selectedEvent.start)
@@ -222,7 +249,7 @@ export default function FullCalendarInternal({
   };
 
   const handleDeleteEvent = async () => {
-    if (!selectedEvent) return;
+    if (!selectedEvent || selectedEvent.isTask) return;
 
     setIsPending(true);
     await deleteCalendarEvent(selectedEvent.id);
@@ -233,7 +260,7 @@ export default function FullCalendarInternal({
   };
 
   const formattedEvents = useMemo(() => {
-    return events.map((event) => {
+    const regularEvents = events.map((event) => {
       const start = new Date(event.startDate);
       const end = new Date(event.endDate);
 
@@ -242,8 +269,11 @@ export default function FullCalendarInternal({
         title: event.title,
         start,
         end,
+        backgroundColor: "#2563eb",
+        borderColor: "#1d4ed8",
         extendedProps: {
           description: event.description,
+          isTask: false,
         },
         allDay:
           start.getHours() === 0 &&
@@ -253,7 +283,40 @@ export default function FullCalendarInternal({
           start.toDateString() === end.toDateString(),
       };
     });
-  }, [events]);
+
+    const taskEvents = tasks
+      .filter((task) => task.dueDate)
+      .map((task) => {
+        const dueDate = new Date(task.dueDate);
+        const isDone = task.status === "DONE";
+
+        return {
+          id: `task-${task.id}`,
+          title: `${isDone ? "✓ " : "📋 "}${task.title}`,
+          start: dueDate,
+          end: dueDate,
+          allDay: true,
+          backgroundColor: isDone
+            ? "#10b981"
+            : task.priority === "HIGH"
+              ? "#ef4444"
+              : "#f59e0b",
+          borderColor: isDone
+            ? "#059669"
+            : task.priority === "HIGH"
+              ? "#dc2626"
+              : "#d97706",
+          extendedProps: {
+            description: task.description,
+            isTask: true,
+            priority: task.priority,
+            status: task.status,
+          },
+        };
+      });
+
+    return [...regularEvents, ...taskEvents];
+  }, [events, tasks]);
 
   useEffect(() => {
     if (!calendarRef.current) return;
@@ -341,6 +404,26 @@ export default function FullCalendarInternal({
 
   return (
     <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border shadow-sm">
+      {/* Легенда */}
+      <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b border-gray-100 dark:border-gray-700 text-xs">
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-blue-600 inline-block" />
+          <span className="text-gray-600 dark:text-gray-300">Події</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
+          <span className="text-gray-600 dark:text-gray-300">Дедлайн задачі</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
+          <span className="text-gray-600 dark:text-gray-300">Термінова задача (HIGH)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
+          <span className="text-gray-600 dark:text-gray-300">Виконана задача</span>
+        </div>
+      </div>
+
       <div ref={calendarRef} />
 
       {/* Модальне вікно створення події */}
@@ -470,15 +553,23 @@ export default function FullCalendarInternal({
         </div>
       )}
 
-      
+      {/* Модальне вікно перегляду / деталей */}
       {isDetailOpen && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="flex items-start justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {isEditing ? "Редагувати подію" : selectedEvent.title}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    {isEditing ? "Редагувати подію" : selectedEvent.title}
+                  </h2>
+                  {selectedEvent.isTask && (
+                    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+                      Задача
+                    </span>
+                  )}
+                </div>
+
                 {!isEditing && selectedEvent.start && (
                   <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                     <Clock className="h-3.5 w-3.5 text-blue-500" />
@@ -500,7 +591,40 @@ export default function FullCalendarInternal({
               </button>
             </div>
 
-            {isEditing ? (
+            {selectedEvent.isTask ? (
+              <div className="mt-4 space-y-3">
+                {selectedEvent.description ? (
+                  <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                    {selectedEvent.description}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Опис відсутній</p>
+                )}
+                <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <span>
+                    Статус:{" "}
+                    <strong className="text-gray-700 dark:text-gray-300">
+                      {selectedEvent.status}
+                    </strong>
+                  </span>
+                  <span>
+                    Пріоритет:{" "}
+                    <strong className="text-gray-700 dark:text-gray-300">
+                      {selectedEvent.priority}
+                    </strong>
+                  </span>
+                </div>
+                <div className="flex justify-end pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsDetailOpen(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
+                  >
+                    Закрити
+                  </button>
+                </div>
+              </div>
+            ) : isEditing ? (
               <form onSubmit={handleUpdateSubmit} className="space-y-4 mt-4">
                 <div>
                   <label
