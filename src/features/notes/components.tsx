@@ -1,432 +1,135 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
-import {
-  Trash2,
-  Edit,
-  Loader2,
-  Save,
-  Plus,
-  Search,
-  X,
-  FileText,
-  CheckSquare,
-} from "lucide-react";
+import React, { useState, useEffect, useRef, useTransition } from "react";
+import { Loader2, Check, Cloud, Save } from "lucide-react";
 import { Note } from "./types";
-import { createNote, updateNote, deleteNote } from "./actions";
-import { createTask } from "@/features/tasks/actions";
-import { TaskPriority } from "@/types";
+import { updateSingleNote } from "./actions";
 
-interface NoteCardProps {
-  note: Note;
+interface SingleNoteDocumentProps {
+  initialNote: Note;
 }
 
-export function NoteCard({ note }: NoteCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [isConvertOpen, setIsConvertOpen] = useState(false);
-  const [title, setTitle] = useState(note.title);
-  const [content, setContent] = useState(note.content);
-
-  // Convert to Task state
-  const [taskPriority, setTaskPriority] = useState<TaskPriority>("MEDIUM");
-  const [taskDueDate, setTaskDueDate] = useState("");
-  const [taskSuccess, setTaskSuccess] = useState(false);
-
+export function SingleNoteDocument({ initialNote }: SingleNoteDocumentProps) {
+  const [content, setContent] = useState(initialNote.content || "");
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [isPending, startTransition] = useTransition();
 
-  const handleSave = () => {
-    if (!title.trim() || !content.trim()) return;
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
 
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const charCount = content.length;
+
+  const performSave = (textToSave: string) => {
+    setSaveStatus("saving");
     startTransition(async () => {
-      const updated = await updateNote({
-        id: note.id,
-        title: title.trim(),
-        content: content.trim(),
-      });
-
-      if (updated) {
-        setIsEditing(false);
+      const result = await updateSingleNote(initialNote.id, textToSave);
+      if (result) {
+        setSaveStatus("saved");
+      } else {
+        setSaveStatus("unsaved");
       }
     });
   };
 
-  const handleDelete = () => {
-    startTransition(async () => {
-      await deleteNote(note.id);
-    });
-  };
+  // Auto-save logic with debounce (1000ms)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
 
-  const handleConvertToTask = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!taskDueDate) return;
+    setSaveStatus("unsaved");
 
-    startTransition(async () => {
-      const created = await createTask({
-        title: note.title,
-        description: note.content,
-        priority: taskPriority,
-        dueDate: new Date(taskDueDate),
-      });
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
 
-      if (created) {
-        setTaskSuccess(true);
-        setTimeout(() => {
-          setTaskSuccess(false);
-          setIsConvertOpen(false);
-        }, 1200);
+    debounceTimerRef.current = setTimeout(() => {
+      performSave(content);
+    }, 1000);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
-    });
-  };
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
 
-  const formattedDate = new Date(note.createdAt).toLocaleDateString("uk-UA", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  // Keyboard shortcut Ctrl+S / Cmd+S for instant manual save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+        performSave(content);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
 
   return (
-    <>
-      <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 p-5 shadow-sm transition-all hover:shadow-md flex flex-col justify-between">
-        {isEditing ? (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                Title *
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-base font-semibold text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
-                required
-              />
-            </div>
+    <div className="mx-auto max-w-4xl space-y-4">
+      {/* Top Document Status Bar */}
+      <div className="flex items-center justify-between px-2 text-sm text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-4 text-xs">
+          <span>
+            Words: <strong className="text-gray-700 dark:text-gray-200">{wordCount}</strong>
+          </span>
+          <span>
+            Characters: <strong className="text-gray-700 dark:text-gray-200">{charCount}</strong>
+          </span>
+          <span className="hidden sm:inline text-gray-400">• Ctrl + S to save manually</span>
+        </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                Content *
-              </label>
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                rows={4}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:border-blue-500 focus:outline-none resize-none"
-                required
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-              <button
-                onClick={() => {
-                  setTitle(note.title);
-                  setContent(note.content);
-                  setIsEditing(false);
-                }}
-                className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={!title.trim() || !content.trim() || isPending}
-                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed cursor-pointer"
-              >
-                {isPending ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Save className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                Save
-              </button>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 text-xs">
+            {saveStatus === "saving" || isPending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                <span className="text-blue-600 dark:text-blue-400 font-medium">Saving...</span>
+              </>
+            ) : saveStatus === "saved" ? (
+              <>
+                <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium">All changes saved</span>
+              </>
+            ) : (
+              <>
+                <Cloud className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+                <span className="text-amber-600 dark:text-amber-400 font-medium">Unsaved changes</span>
+              </>
+            )}
           </div>
-        ) : (
-          <>
-            <div className="space-y-2">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 wrap-break-word">
-                {note.title}
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed line-clamp-6">
-                {note.content}
-              </p>
-            </div>
 
-            <div className="flex items-center justify-between pt-4 mt-3 border-t border-gray-100 dark:border-gray-800/60 text-xs text-gray-400">
-              <span>{formattedDate}</span>
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => setIsConvertOpen(true)}
-                  title="Створити задачу з нотатки"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
-                >
-                  <CheckSquare className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  title="Редагувати нотатку"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                >
-                  <Edit className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isPending}
-                  title="Видалити"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+          <button
+            type="button"
+            onClick={() => performSave(content)}
+            disabled={saveStatus === "saved" || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed cursor-pointer transition-all"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save now
+          </button>
+        </div>
       </div>
 
-      {/* Convert Note to Task Modal */}
-      {isConvertOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800 mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600">
-                  <CheckSquare className="h-5 w-5" />
-                </div>
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Створити задачу з нотатки
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsConvertOpen(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleConvertToTask} className="space-y-4">
-              <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800 space-y-1">
-                <p className="text-xs font-semibold uppercase text-gray-500">
-                  Заголовок задачі
-                </p>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {note.title}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                    Пріоритет
-                  </label>
-                  <select
-                    value={taskPriority}
-                    onChange={(e) =>
-                      setTaskPriority(e.target.value as TaskPriority)
-                    }
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value="LOW">LOW</option>
-                    <option value="MEDIUM">MEDIUM</option>
-                    <option value="HIGH">HIGH</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                    Дедлайн *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={taskDueDate}
-                    onChange={(e) => setTaskDueDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setIsConvertOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
-                >
-                  Скасувати
-                </button>
-                <button
-                  type="submit"
-                  disabled={!taskDueDate || isPending}
-                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                >
-                  {isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  {taskSuccess ? "Створено! ✓" : "Створити задачу"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-export function CreateNoteForm() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [isPending, startTransition] = useTransition();
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
-
-    startTransition(async () => {
-      const created = await createNote({
-        title: title.trim(),
-        content: content.trim(),
-      });
-
-      if (created) {
-        setTitle("");
-        setContent("");
-        setIsOpen(false);
-      }
-    });
-  };
-
-  return (
-    <div className="mb-6">
-      {!isOpen ? (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-all cursor-pointer"
-        >
-          <Plus className="h-4 w-4" /> Add Note
-        </button>
-      ) : (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
-            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800 mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Create Note
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                  autoFocus
-                  placeholder="Note title..."
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                  Content *
-                </label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={5}
-                  required
-                  placeholder="Write your note here..."
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!title.trim() || !content.trim() || isPending}
-                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white rounded-lg shadow-sm disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                >
-                  {isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Save Note
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface NoteGridProps {
-  notes: Note[];
-}
-
-export function NoteGrid({ notes }: NoteGridProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredNotes = notes.filter(
-    (note) =>
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      note.content.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
-
-  return (
-    <div className="space-y-4">
-      {notes.length > 0 && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search notes..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none shadow-sm"
-          />
-        </div>
-      )}
-
-      {filteredNotes.length === 0 ? (
-        <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
-          <FileText className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-base font-medium text-gray-600 dark:text-gray-300">
-            {notes.length === 0
-              ? "No notes found. Start by creating one!"
-              : "No matching notes."}
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {filteredNotes.map((note) => (
-            <NoteCard key={note.id} note={note} />
-          ))}
-        </div>
-      )}
+      {/* Main Single Document Sheet */}
+      <div className="min-h-[75vh] w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 sm:p-12 shadow-sm transition-all focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50">
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Start typing your thoughts here like on a clean sheet of paper..."
+          className="h-full min-h-[65vh] w-full resize-none border-none bg-transparent p-0 text-base leading-relaxed text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
+          autoFocus
+        />
+      </div>
     </div>
   );
 }
