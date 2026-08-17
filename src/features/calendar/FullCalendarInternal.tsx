@@ -9,6 +9,8 @@ import {
   Clock,
   Edit2,
   Save,
+  Plus,
+  Check,
 } from "lucide-react";
 import {
   updateCalendarEventDates,
@@ -46,11 +48,13 @@ interface EventClickInfo {
     title: string;
     start: Date | null;
     end: Date | null;
+    backgroundColor?: string;
     extendedProps: {
       description?: string;
       isTask?: boolean;
       priority?: string;
       status?: string;
+      color?: string;
     };
   };
 }
@@ -61,17 +65,39 @@ interface CalendarApi {
   addEventSource: (events: unknown) => void;
 }
 
+// Пресети кольорів для подій
+const COLOR_PRESETS = [
+  { name: "Blue", value: "#2563eb", border: "#1d4ed8" },
+  { name: "Indigo", value: "#4f46e5", border: "#4338ca" },
+  { name: "Purple", value: "#7c3aed", border: "#6d28d9" },
+  { name: "Pink", value: "#db2777", border: "#be185d" },
+  { name: "Emerald", value: "#059669", border: "#047857" },
+  { name: "Amber", value: "#d97706", border: "#b45309" },
+  { name: "Rose", value: "#e11d48", border: "#be123c" },
+  { name: "Dark Slate", value: "#475569", border: "#334155" },
+];
+
+const MIN_HOUR = 7;
+const MAX_HOUR = 20;
+
+const TIME_SLOTS = Array.from(
+  { length: (MAX_HOUR - MIN_HOUR) * 2 + 1 },
+  (_, i) => {
+    const totalMinutes = MIN_HOUR * 60 + i * 30;
+    const hours = Math.floor(totalMinutes / 60)
+      .toString()
+      .padStart(2, "0");
+    const minutes = totalMinutes % 60 === 0 ? "00" : "30";
+    return `${hours}:${minutes}`;
+  },
+);
+
 export default function FullCalendarInternal({
   initialEvents,
   initialTasks = [],
 }: FullCalendarInternalProps) {
-  const [prevInitialEvents, setPrevInitialEvents] =
-    useState<CalendarEvent[]>(initialEvents);
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
-
-  const [prevInitialTasks, setPrevInitialTasks] =
-    useState<Task[]>(initialTasks);
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [localEvents, setLocalEvents] = useState<CalendarEvent[]>([]);
+  const [deletedEventIds, setDeletedEventIds] = useState<string[]>([]);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -79,8 +105,9 @@ export default function FullCalendarInternal({
 
   const [titleInput, setTitleInput] = useState("");
   const [descriptionInput, setDescriptionInput] = useState("");
-  const [startTimeInput, setStartTimeInput] = useState("");
-  const [endTimeInput, setEndTimeInput] = useState("");
+  const [colorInput, setColorInput] = useState(COLOR_PRESETS[0].value);
+  const [startTimeInput, setStartTimeInput] = useState("09:00");
+  const [endTimeInput, setEndTimeInput] = useState("10:00");
   const [selectedDates, setSelectedDates] = useState<{
     start: Date;
     end: Date;
@@ -90,6 +117,7 @@ export default function FullCalendarInternal({
     id: string;
     title: string;
     description?: string;
+    color?: string;
     start?: Date | null;
     end?: Date | null;
     isTask?: boolean;
@@ -99,35 +127,80 @@ export default function FullCalendarInternal({
 
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editStartTime, setEditStartTime] = useState("");
-  const [editEndTime, setEditEndTime] = useState("");
+  const [editColor, setEditColor] = useState(COLOR_PRESETS[0].value);
+  const [editStartTime, setEditStartTime] = useState("09:00");
+  const [editEndTime, setEditEndTime] = useState("10:00");
 
   const [isPending, setIsPending] = useState(false);
 
   const calendarRef = useRef<HTMLDivElement>(null);
   const calendarInstanceRef = useRef<CalendarApi | null>(null);
 
-  if (prevInitialEvents !== initialEvents) {
-    setPrevInitialEvents(initialEvents);
-    setEvents(initialEvents);
-  }
+  const activeEvents = useMemo(() => {
+    const combinedMap = new Map<string, CalendarEvent>();
 
-  if (prevInitialTasks !== initialTasks) {
-    setPrevInitialTasks(initialTasks);
-    setTasks(initialTasks);
-  }
+    initialEvents.forEach((ev) => {
+      if (!deletedEventIds.includes(ev.id)) {
+        combinedMap.set(ev.id, ev);
+      }
+    });
 
-  const formatTimeForInput = (date: Date) => {
-    const hours = date.getHours().toString().padStart(2, "0");
-    const minutes = date.getMinutes().toString().padStart(2, "0");
-    return `${hours}:${minutes}`;
+    localEvents.forEach((ev) => {
+      if (!deletedEventIds.includes(ev.id)) {
+        combinedMap.set(ev.id, ev);
+      }
+    });
+
+    return Array.from(combinedMap.values());
+  }, [initialEvents, localEvents, deletedEventIds]);
+
+  const clampTimeForInput = (date: Date) => {
+    let hours = date.getHours();
+    const minutes = date.getMinutes() >= 30 ? "30" : "00";
+
+    if (hours < MIN_HOUR) hours = MIN_HOUR;
+    if (hours > MAX_HOUR) hours = MAX_HOUR;
+
+    const formattedHours = hours.toString().padStart(2, "0");
+    const formattedTime = `${formattedHours}:${minutes}`;
+
+    return TIME_SLOTS.includes(formattedTime) ? formattedTime : TIME_SLOTS[0];
+  };
+
+  const handleQuickAdd = () => {
+    const now = new Date();
+    setSelectedDates({ start: now, end: now });
+
+    const currentClamped = clampTimeForInput(now);
+    setStartTimeInput(currentClamped);
+
+    const startIndex = TIME_SLOTS.indexOf(currentClamped);
+    const endIndex = Math.min(
+      startIndex !== -1 ? startIndex + 2 : 2,
+      TIME_SLOTS.length - 1,
+    );
+    setEndTimeInput(TIME_SLOTS[endIndex]);
+
+    setTitleInput("");
+    setDescriptionInput("");
+    setColorInput(COLOR_PRESETS[0].value);
+    setIsCreateOpen(true);
   };
 
   const handleEventDrop = async (info: EventChangeInfo) => {
     if (info.event.extendedProps.isTask) return;
     const { id, start, end } = info.event;
     if (start) {
-      await updateCalendarEventDates(id, start, end || start);
+      const finalEnd = end || start;
+      setLocalEvents((prev) => {
+        const existing = activeEvents.find((e) => e.id === id);
+        if (!existing) return prev;
+        return [
+          ...prev.filter((e) => e.id !== id),
+          { ...existing, startDate: start, endDate: finalEnd },
+        ];
+      });
+      await updateCalendarEventDates(id, start, finalEnd);
     }
   };
 
@@ -135,16 +208,25 @@ export default function FullCalendarInternal({
     if (info.event.extendedProps.isTask) return;
     const { id, start, end } = info.event;
     if (start && end) {
+      setLocalEvents((prev) => {
+        const existing = activeEvents.find((e) => e.id === id);
+        if (!existing) return prev;
+        return [
+          ...prev.filter((e) => e.id !== id),
+          { ...existing, startDate: start, endDate: end },
+        ];
+      });
       await updateCalendarEventDates(id, start, end);
     }
   };
 
   const handleDateSelect = (info: DateSelectInfo) => {
     setSelectedDates({ start: info.start, end: info.end });
-    setStartTimeInput(formatTimeForInput(info.start));
-    setEndTimeInput(formatTimeForInput(info.end));
+    setStartTimeInput(clampTimeForInput(info.start));
+    setEndTimeInput(clampTimeForInput(info.end));
     setTitleInput("");
     setDescriptionInput("");
+    setColorInput(COLOR_PRESETS[0].value);
     setIsCreateOpen(true);
   };
 
@@ -152,11 +234,16 @@ export default function FullCalendarInternal({
     const start = info.event.start;
     const end = info.event.end;
     const isTask = !!info.event.extendedProps.isTask;
+    const eventColor =
+      info.event.extendedProps.color ||
+      info.event.backgroundColor ||
+      COLOR_PRESETS[0].value;
 
     setSelectedEvent({
       id: info.event.id,
       title: info.event.title,
       description: info.event.extendedProps.description,
+      color: eventColor,
       start,
       end,
       isTask,
@@ -166,8 +253,9 @@ export default function FullCalendarInternal({
 
     setEditTitle(info.event.title.replace(/^✓\s|^📋\s/, ""));
     setEditDescription(info.event.extendedProps.description || "");
-    setEditStartTime(start ? formatTimeForInput(start) : "");
-    setEditEndTime(end ? formatTimeForInput(end) : "");
+    setEditColor(eventColor);
+    setEditStartTime(start ? clampTimeForInput(start) : "09:00");
+    setEditEndTime(end ? clampTimeForInput(end) : "10:00");
     setIsEditing(false);
     setIsDetailOpen(true);
   };
@@ -194,10 +282,15 @@ export default function FullCalendarInternal({
       description: descriptionInput.trim(),
       startDate: finalStart,
       endDate: finalEnd,
+      // Якщо бекенд підтримує колір, він збережеться, або ж зберігатиметься локально
+      ...({ color: colorInput } as Record<string, unknown>),
     });
 
     if (newEvent) {
-      setEvents((prev) => [...prev, newEvent]);
+      setLocalEvents((prev) => [
+        ...prev,
+        { ...newEvent, ...({ color: colorInput } as Record<string, unknown>) },
+      ]);
     }
     setIsPending(false);
     setIsCreateOpen(false);
@@ -228,19 +321,23 @@ export default function FullCalendarInternal({
 
     await updateCalendarEventDates(selectedEvent.id, baseStart, baseEnd);
 
-    setEvents((prev) =>
-      prev.map((item) =>
-        item.id === selectedEvent.id
-          ? {
-              ...item,
-              title: editTitle.trim(),
-              description: editDescription.trim(),
-              startDate: baseStart,
-              endDate: baseEnd,
-            }
-          : item,
-      ),
-    );
+    setLocalEvents((prev) => {
+      const existing = activeEvents.find((e) => e.id === selectedEvent.id);
+      if (!existing) return prev;
+
+      return [
+        ...prev.filter((item) => item.id !== selectedEvent.id),
+        {
+          ...existing,
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          startDate: baseStart,
+          endDate: baseEnd,
+          updatedAt: new Date(),
+          ...({ color: editColor } as Record<string, unknown>),
+        },
+      ];
+    });
 
     setIsPending(false);
     setIsEditing(false);
@@ -253,26 +350,32 @@ export default function FullCalendarInternal({
 
     setIsPending(true);
     await deleteCalendarEvent(selectedEvent.id);
-    setEvents((prev) => prev.filter((e) => e.id !== selectedEvent.id));
+    setDeletedEventIds((prev) => [...prev, selectedEvent.id]);
+    setLocalEvents((prev) => prev.filter((e) => e.id !== selectedEvent.id));
     setIsPending(false);
     setIsDetailOpen(false);
     setSelectedEvent(null);
   };
 
   const formattedEvents = useMemo(() => {
-    const regularEvents = events.map((event) => {
+    const regularEvents = activeEvents.map((event) => {
       const start = new Date(event.startDate);
       const end = new Date(event.endDate);
+      const eventColor =
+        (event as unknown as { color?: string }).color ||
+        COLOR_PRESETS[0].value;
+      const matchedPreset = COLOR_PRESETS.find((p) => p.value === eventColor);
 
       return {
         id: event.id,
         title: event.title,
         start,
         end,
-        backgroundColor: "#2563eb",
-        borderColor: "#1d4ed8",
+        backgroundColor: eventColor,
+        borderColor: matchedPreset ? matchedPreset.border : eventColor,
         extendedProps: {
           description: event.description,
+          color: eventColor,
           isTask: false,
         },
         allDay:
@@ -284,10 +387,10 @@ export default function FullCalendarInternal({
       };
     });
 
-    const taskEvents = tasks
+    const taskEvents = initialTasks
       .filter((task) => task.dueDate)
       .map((task) => {
-        const dueDate = new Date(task.dueDate);
+        const dueDate = new Date(task.dueDate!);
         const isDone = task.status === "DONE";
 
         return {
@@ -316,7 +419,7 @@ export default function FullCalendarInternal({
       });
 
     return [...regularEvents, ...taskEvents];
-  }, [events, tasks]);
+  }, [activeEvents, initialTasks]);
 
   useEffect(() => {
     if (!calendarRef.current) return;
@@ -336,23 +439,49 @@ export default function FullCalendarInternal({
 
       const calendarInstance = new Calendar(calendarRef.current, {
         plugins: [dayGrid, timeGrid, interaction],
-        initialView: "dayGridMonth",
+        locale: "en",
+        initialView: "timeGridDay",
+        firstDay: 1,
         headerToolbar: {
           left: "prev,next today",
           center: "title",
-          right: "dayGridMonth,timeGridWeek,timeGridDay",
+          right: "timeGridDay,timeGridWeek,dayGridMonth",
         },
+        buttonText: {
+          today: "Today",
+          month: "Month",
+          week: "Week",
+          day: "Day",
+        },
+        scrollTime: new Date().toTimeString().slice(0, 8),
+        scrollTimeReset: false,
+        height: "75vh",
+        dayHeaderFormat: {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        },
+        slotMinTime: "07:00:00",
+        slotMaxTime: "20:00:00",
+        slotDuration: "00:30:00",
+        slotLabelInterval: "00:30:00",
+        slotLabelFormat: {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        },
+        eventTimeFormat: {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        },
+        nowIndicator: true,
+        allDaySlot: true,
+        allDayText: "All Day",
         editable: true,
         selectable: true,
         selectMirror: true,
         dayMaxEvents: true,
-
-        slotDuration: "00:30:00",
-        snapDuration: "00:15:00",
-        slotMinTime: "00:00:00",
-        slotMaxTime: "24:00:00",
-        allDaySlot: true,
-
         events: formattedEvents,
         eventDrop: (info: unknown) => handleEventDrop(info as EventChangeInfo),
         eventResize: (info: unknown) =>
@@ -383,16 +512,17 @@ export default function FullCalendarInternal({
 
   const formatSelectedDateTime = (start?: Date | null, end?: Date | null) => {
     if (!start) return "";
-    const startDateStr = start.toLocaleDateString("uk-UA", {
+    const startDateStr = start.toLocaleDateString("en-US", {
       day: "numeric",
       month: "short",
+      year: "numeric",
     });
-    const startTimeStr = start.toLocaleTimeString("uk-UA", {
+    const startTimeStr = start.toLocaleTimeString("en-GB", {
       hour: "2-digit",
       minute: "2-digit",
     });
     const endTimeStr = end
-      ? end.toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" })
+      ? end.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
       : "";
 
     if (startTimeStr === "00:00" && (!endTimeStr || endTimeStr === "00:00")) {
@@ -403,40 +533,62 @@ export default function FullCalendarInternal({
   };
 
   return (
-    <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border shadow-sm">
-      {/* Легенда */}
-      <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b border-gray-100 dark:border-gray-700 text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-blue-600 inline-block" />
-          <span className="text-gray-600 dark:text-gray-300">Події</span>
+    <div className="p-6 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+      {/* Legend + New Event */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
+        <div className="flex flex-wrap items-center gap-4 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+            <span className="text-gray-600 dark:text-gray-300 font-medium">
+              Events
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />
+            <span className="text-gray-600 dark:text-gray-300 font-medium">
+              Task Deadline
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+            <span className="text-gray-600 dark:text-gray-300 font-medium">
+              Urgent Task (HIGH)
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+            <span className="text-gray-600 dark:text-gray-300 font-medium">
+              Completed Task
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
-          <span className="text-gray-600 dark:text-gray-300">Дедлайн задачі</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-red-500 inline-block" />
-          <span className="text-gray-600 dark:text-gray-300">Термінова задача (HIGH)</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
-          <span className="text-gray-600 dark:text-gray-300">Виконана задача</span>
-        </div>
+
+        <button
+          type="button"
+          onClick={handleQuickAdd}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold shadow-sm hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New Event
+        </button>
       </div>
 
       <div ref={calendarRef} />
 
-      {/* Модальне вікно створення події */}
+      {/* Create Event Modal */}
       {isCreateOpen && selectedDates && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800 transition-all">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
+                <div
+                  className="p-2 rounded-lg text-white"
+                  style={{ backgroundColor: colorInput }}
+                >
                   <CalendarIcon className="h-5 w-5" />
                 </div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Нова подія
+                  New Event
                 </h2>
               </div>
               <button
@@ -451,7 +603,7 @@ export default function FullCalendarInternal({
             <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-xs font-medium text-gray-600 dark:text-gray-300">
               <Clock className="h-3.5 w-3.5 text-blue-500" />
               <span>
-                {selectedDates.start.toLocaleDateString("uk-UA", {
+                {selectedDates.start.toLocaleDateString("en-US", {
                   day: "numeric",
                   month: "long",
                   year: "numeric",
@@ -465,7 +617,7 @@ export default function FullCalendarInternal({
                   htmlFor="title"
                   className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                 >
-                  Назва події *
+                  Event Title *
                 </label>
                 <input
                   type="text"
@@ -474,9 +626,36 @@ export default function FullCalendarInternal({
                   onChange={(e) => setTitleInput(e.target.value)}
                   required
                   autoFocus
-                  placeholder="Наприклад, Зустріч з командою"
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  placeholder="e.g. Team Standup"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all"
                 />
+              </div>
+
+              {/* Color Picker */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                  Color Tag
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {COLOR_PRESETS.map((preset) => (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => setColorInput(preset.value)}
+                      style={{ backgroundColor: preset.value }}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-white transition-all transform cursor-pointer ${
+                        colorInput === preset.value
+                          ? "ring-2 ring-offset-2 ring-blue-500 scale-110 shadow-sm"
+                          : "opacity-80 hover:opacity-100 hover:scale-105"
+                      }`}
+                      title={preset.name}
+                    >
+                      {colorInput === preset.value && (
+                        <Check className="w-3.5 h-3.5 stroke-3" />
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -485,30 +664,40 @@ export default function FullCalendarInternal({
                     htmlFor="startTime"
                     className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                   >
-                    Початок
+                    Start (07:00 - 20:00)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     id="startTime"
                     value={startTimeInput}
                     onChange={(e) => setStartTimeInput(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
-                  />
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+                  >
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={`start-${slot}`} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label
                     htmlFor="endTime"
                     className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                   >
-                    Кінець
+                    End (07:00 - 20:00)
                   </label>
-                  <input
-                    type="time"
+                  <select
                     id="endTime"
                     value={endTimeInput}
                     onChange={(e) => setEndTimeInput(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
-                  />
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+                  >
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={`end-${slot}`} value={slot}>
+                        {slot}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -517,15 +706,15 @@ export default function FullCalendarInternal({
                   htmlFor="description"
                   className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                 >
-                  {"Опис (необов'язково)"}
+                  Description (optional)
                 </label>
                 <textarea
                   id="description"
                   value={descriptionInput}
                   onChange={(e) => setDescriptionInput(e.target.value)}
                   rows={3}
-                  placeholder="Додайте нотатки чи деталі..."
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+                  placeholder="Add details, link or location..."
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
                 />
               </div>
 
@@ -535,7 +724,7 @@ export default function FullCalendarInternal({
                   onClick={() => setIsCreateOpen(false)}
                   className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                 >
-                  Скасувати
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -545,7 +734,7 @@ export default function FullCalendarInternal({
                   {isPending && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   )}
-                  Створити
+                  Create Event
                 </button>
               </div>
             </form>
@@ -553,19 +742,29 @@ export default function FullCalendarInternal({
         </div>
       )}
 
-      {/* Модальне вікно перегляду / деталей */}
+      {/* Detail / Edit Event Modal */}
       {isDetailOpen && selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl border border-gray-100 dark:border-gray-800">
             <div className="flex items-start justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div>
                 <div className="flex items-center gap-2">
+                  {!selectedEvent.isTask && (
+                    <span
+                      className="w-3.5 h-3.5 rounded-full inline-block shrink-0 shadow-xs"
+                      style={{
+                        backgroundColor: isEditing
+                          ? editColor
+                          : selectedEvent.color || COLOR_PRESETS[0].value,
+                      }}
+                    />
+                  )}
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    {isEditing ? "Редагувати подію" : selectedEvent.title}
+                    {isEditing ? "Edit Event" : selectedEvent.title}
                   </h2>
                   {selectedEvent.isTask && (
                     <span className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
-                      Задача
+                      Task
                     </span>
                   )}
                 </div>
@@ -598,17 +797,19 @@ export default function FullCalendarInternal({
                     {selectedEvent.description}
                   </p>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">Опис відсутній</p>
+                  <p className="text-sm text-gray-400 italic">
+                    No description provided
+                  </p>
                 )}
                 <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100 dark:border-gray-800">
                   <span>
-                    Статус:{" "}
+                    Status:{" "}
                     <strong className="text-gray-700 dark:text-gray-300">
                       {selectedEvent.status}
                     </strong>
                   </span>
                   <span>
-                    Пріоритет:{" "}
+                    Priority:{" "}
                     <strong className="text-gray-700 dark:text-gray-300">
                       {selectedEvent.priority}
                     </strong>
@@ -620,7 +821,7 @@ export default function FullCalendarInternal({
                     onClick={() => setIsDetailOpen(false)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer"
                   >
-                    Закрити
+                    Close
                   </button>
                 </div>
               </div>
@@ -631,7 +832,7 @@ export default function FullCalendarInternal({
                     htmlFor="editTitle"
                     className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                   >
-                    Назва події *
+                    Event Title *
                   </label>
                   <input
                     type="text"
@@ -639,8 +840,35 @@ export default function FullCalendarInternal({
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     required
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all"
                   />
+                </div>
+
+                {/* Edit Color Picker */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                    Color Tag
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => setEditColor(preset.value)}
+                        style={{ backgroundColor: preset.value }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-white transition-all transform cursor-pointer ${
+                          editColor === preset.value
+                            ? "ring-2 ring-offset-2 ring-blue-500 scale-110 shadow-sm"
+                            : "opacity-80 hover:opacity-100 hover:scale-105"
+                        }`}
+                        title={preset.name}
+                      >
+                        {editColor === preset.value && (
+                          <Check className="w-3.5 h-3.5 stroke-3" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -649,30 +877,40 @@ export default function FullCalendarInternal({
                       htmlFor="editStartTime"
                       className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                     >
-                      Початок
+                      Start (07:00 - 20:00)
                     </label>
-                    <input
-                      type="time"
+                    <select
                       id="editStartTime"
                       value={editStartTime}
                       onChange={(e) => setEditStartTime(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
-                    />
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+                    >
+                      {TIME_SLOTS.map((slot) => (
+                        <option key={`edit-start-${slot}`} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label
                       htmlFor="editEndTime"
                       className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                     >
-                      Кінець
+                      End (07:00 - 20:00)
                     </label>
-                    <input
-                      type="time"
+                    <select
                       id="editEndTime"
                       value={editEndTime}
                       onChange={(e) => setEditEndTime(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
-                    />
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer"
+                    >
+                      {TIME_SLOTS.map((slot) => (
+                        <option key={`edit-end-${slot}`} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -681,14 +919,14 @@ export default function FullCalendarInternal({
                     htmlFor="editDescription"
                     className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1"
                   >
-                    {"Опис (необов'язково)"}
+                    Description (optional)
                   </label>
                   <textarea
                     id="editDescription"
                     value={editDescription}
                     onChange={(e) => setEditDescription(e.target.value)}
                     rows={3}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3.5 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:bg-white dark:focus:bg-gray-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
                   />
                 </div>
 
@@ -698,7 +936,7 @@ export default function FullCalendarInternal({
                     onClick={() => setIsEditing(false)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                   >
-                    Скасувати
+                    Cancel
                   </button>
                   <button
                     type="submit"
@@ -710,7 +948,7 @@ export default function FullCalendarInternal({
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Зберегти
+                    Save
                   </button>
                 </div>
               </form>
@@ -722,7 +960,7 @@ export default function FullCalendarInternal({
                   </p>
                 ) : (
                   <p className="mt-4 text-sm text-gray-400 italic">
-                    Опис відсутній
+                    No description provided
                   </p>
                 )}
 
@@ -738,7 +976,7 @@ export default function FullCalendarInternal({
                     ) : (
                       <Trash2 className="mr-2 h-4 w-4" />
                     )}
-                    Видалити
+                    Delete
                   </button>
                   <div className="flex items-center gap-2">
                     <button
@@ -747,14 +985,14 @@ export default function FullCalendarInternal({
                       className="inline-flex items-center justify-center px-3.5 py-2 text-sm font-medium text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 dark:bg-blue-950/40 dark:hover:bg-blue-600 rounded-lg transition-all cursor-pointer"
                     >
                       <Edit2 className="mr-1.5 h-4 w-4" />
-                      Редагувати
+                      Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsDetailOpen(false)}
                       className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
                     >
-                      Закрити
+                      Close
                     </button>
                   </div>
                 </div>
