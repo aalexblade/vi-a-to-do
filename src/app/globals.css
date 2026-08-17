@@ -25,3 +25,194 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ==========================================================================
+   FullCalendar Modern Polish Styles & Complete Scrollbar Fix
+   ========================================================================== */
+
+.fc {
+  --fc-border-color: #f1f5f9;
+  --fc-today-bg-color: #f8fafc !important;
+  --fc-now-indicator-color: #ef4444;
+  --fc-page-bg-color: transparent;
+  font-family: inherit;
+}
+
+/* 1. Повне відключення стрілочок скролу (Webkit) для всіх елементів календаря */
+.fc *::-webkit-scrollbar-button,
+.fc::-webkit-scrollbar-button,
+.fc-scroller::-webkit-scrollbar-button,
+.fc-scroller-harness::-webkit-scrollbar-button,
+.fc-timegrid-header .fc-scroller::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+/* 2. Приховування скролів та технічних зазорів у шапці та блоці All Day */
+.fc .fc-col-header,
+.fc .fc-timegrid-header,
+.fc .fc-timegrid-header .fc-scroller,
+.fc .fc-timegrid-header .fc-scroller-harness,
+.fc .fc-scroller-harness,
+.fc .fc-scroller-harness-liquid,
+.fc .fc-scroller-liquid-absolute,
+.fc-timegrid-axis-frame,
+.fc-timegrid-axis-cushion {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.fc .fc-timegrid-header .fc-scroller::-webkit-scrollbar,
+.fc .fc-scroller-harness::-webkit-scrollbar,
+.fc-scroller-liquid-absolute::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* 3. Акуратний тонкий скролбар виключно для часової сітки (годин) */
+.fc .fc-timegrid-body .fc-scroller {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.fc .fc-timegrid-body .fc-scroller::-webkit-scrollbar {
+  width: 6px;
+}
+
+.fc .fc-timegrid-body .fc-scroller::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+
+.fc .fc-timegrid-body .fc-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+.fc .fc-timegrid-body .fc-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 4. Прибираємо підсвічування сьогоднішнього дня у сітці */
+.fc .fc-timegrid-col.fc-day-today {
+  background-color: #fbfcfe !important;
+}
+
+/* 5. Кнопки та заголовки тулбару */
+.fc .fc-toolbar-title {
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-button-primary {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #334155 !important;
+  font-weight: 500 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.35rem 0.75rem !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+  text-transform: capitalize !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.fc .fc-button-primary:hover {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.fc .fc-button-primary:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+.fc .fc-button-active {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+/* 6. Стилі карток подій */
+.fc-timegrid-event {
+  border-radius: 8px !important;
+  border: none !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+}
+
+.fc-daygrid-event {
+  border-radius: 6px !important;
+  padding: 2px 4px !important;
+}
+
+.fc-v-event {
+  border-left-width: 4px !important;
+}
+
+.fc-event-main {
+  padding: 0 !important;
+}
+
+/* 7. Позначки часу та заголовки колонок */
+.fc .fc-timegrid-slot-label-cushion {
+  font-size: 0.75rem !important;
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+.fc .fc-col-header-cell-cushion {
+  padding: 8px 4px !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  color: #334155 !important;
+  text-decoration: none !important;
+}
+
+/* 8. Підтримка темної теми для FullCalendar */
+@media (prefers-color-scheme: dark) {
+  .fc {
+    --fc-border-color: #334155;
+    --fc-today-bg-color: #1e293b !important;
+  }
+
+  .fc .fc-timegrid-col.fc-day-today {
+    background-color: #0f172a !important;
+  }
+
+  .fc .fc-toolbar-title {
+    color: #f8fafc !important;
+  }
+
+  .fc .fc-button-primary {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #cbd5e1 !important;
+  }
+
+  .fc .fc-button-primary:hover {
+    background-color: #334155 !important;
+    color: #f8fafc !important;
+  }
+
+  .fc .fc-col-header-cell-cushion {
+    color: #cbd5e1 !important;
+  }
+
+  .fc .fc-timegrid-slot-label-cushion {
+    color: #94a3b8 !important;
+  }
+
+  .fc .fc-timegrid-body .fc-scroller {
+    scrollbar-color: #475569 transparent;
+  }
+
+  .fc .fc-timegrid-body .fc-scroller::-webkit-scrollbar-thumb {
+    background-color: #475569;
+  }
+}
